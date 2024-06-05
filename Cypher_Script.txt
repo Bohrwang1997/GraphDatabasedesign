@@ -1,0 +1,167 @@
+Graph Database Creation
+
+1. Create player node
+// Load Player nodes
+LOAD CSV WITH HEADERS FROM 'file:///player.csv' AS row
+CREATE (:Player {
+  playerId: toInteger(row['Player id']),
+  name: row['Player'],
+  position: row['Position'],
+  number: toInteger(row['Number']),
+  dob: date(row['D.O.B']),
+  age: toInteger(row['Age']),
+  height: toInteger(row['Height (cm)']),
+  caps: toInteger(row['Caps']),
+  internationalGoals: toInteger(row['International goals']),
+  playsInHomeCountry: (row['Plays in home country?'] = 'TRUE')
+});
+
+2. Create country node
+// Load Country nodes
+LOAD CSV WITH HEADERS FROM 'file:///country.csv' AS row
+CREATE (:Country {
+  countryId: toInteger(row['Country id']),
+  name: row['Country']
+});
+
+3. Create club node
+// Load Club nodes
+LOAD CSV WITH HEADERS FROM 'file:///club.csv' AS row
+CREATE (:Club {
+  clubId: toInteger(row['Club id']),
+  name: row['Club']
+});
+
+4. Create relationship 'LOCATED_IN'
+// Create rel_located_in relationships
+LOAD CSV WITH HEADERS FROM 'file:///rel_located_in.csv' AS row
+MATCH (c:Club {clubId: toInteger(row['Club id'])}),
+      (co:Country {countryId: toInteger(row['Country id'])})
+CREATE (c)-[:LOCATED_IN]->(co);
+
+5. Create relationship 'PLAY_FOR'
+// Create rel_play_for relationships
+LOAD CSV WITH HEADERS FROM 'file:///rel_play_for.csv' AS row
+MATCH (p:Player {playerId: toInteger(row['Player id'])}),
+      (c:Club {clubId: toInteger(row['Club id'])})
+CREATE (p)-[:PLAYS_FOR]->(c);
+
+6. Create relationship 'REPRESENT'
+// Create rel_represent relationships
+LOAD CSV WITH HEADERS FROM 'file:///rel_represent.csv' AS row
+MATCH (p:Player {playerId: toInteger(row['Player id'])}),
+      (c:Country {countryId: toInteger(row['Country id'])})
+CREATE (p)-[:REPRESENTS]->(c);
+
+Cypher Queries
+1. What is the jersy number of the player with 229397?
+
+MATCH (p:Player {playerId: 229397})
+RETURN p.name AS PlayerName, p.number AS jerseyNumber;
+
+2. Which clubs are based in Nigeria?
+
+MATCH (c:Club)-[:LOCATED_IN]->(co:Country {name: 'Nigeria'})
+RETURN c
+
+3. Which club does Lionel Messi play for?
+
+MATCH (p:Player {name: 'Lionel MESSI'})-[:PLAYS_FOR]->(c:Club)
+RETURN p.name AS playerName, c.name AS clubName
+
+4. How old is Lionel Messi?
+
+MATCH (p:Player {name: 'Lionel MESSI'})
+RETURN p.name AS playerName, p.age AS age
+
+
+5. In which country is the club that Alan PULIDO plays for?
+
+MATCH (p:Player {name: 'Alan PULIDO'})-[:PLAYS_FOR]->(c:Club)-[:LOCATED_IN]->(co:Country)
+RETURN DISTINCT co
+
+6. Find a club that has players from Brazil.
+
+MATCH (p:Player)-[:PLAYS_FOR]->(c:Club), (p)-[:REPRESENTS]->(co:Country {name: 'Brazil'})
+RETURN DISTINCT c
+LIMIT 1
+
+7. Find all players play at FC Barcelona, returning in ascending orders of age.
+
+MATCH (p:Player)-[:PLAYS_FOR]->(c:Club {name: 'FC Barcelona'})
+RETURN p.name AS playerName, p.age AS age, c.name AS clubName
+ORDER BY p.age ASC
+
+8. Find all Defender players in national team of Brazil, returning in descending order of caps.
+
+MATCH (p:Player)-[:REPRESENTS]->(c:Country {name: 'Brazil'})
+WHERE p.position = 'Defender'
+RETURN p.name AS playerName, p.position AS position, c.name AS nationality, p.caps AS caps
+ORDER BY p.caps DESC
+
+9. Find all players born in 1987 and in national team of Argentina, returning in descending order of caps.
+
+MATCH (p:Player)-[:REPRESENTS]->(c:Country {name: 'Argentina'})
+WHERE p.dob.year = 1987
+RETURN p.name AS playerName, "1987" AS dateOfBirth, C.name AS Country, p.caps AS caps
+ORDER BY p.caps DESC
+
+10. Find the players that belongs to the same club in national team of Argentina, returning in descending order of international goals.
+
+MATCH (p1:Player)-[:REPRESENTS]->(c:Country {name: 'Argentina'}),
+      (p1)-[:PLAYS_FOR]->(club:Club),
+      (p2:Player)-[:REPRESENTS]->(c),
+      (p2)-[:PLAYS_FOR]->(club)
+WHERE p1 <> p2
+RETURN p1.name AS player1, p2.name AS player2, club.name AS commonClub, c.name AS nationalTeam,
+       p1.internationalGoals AS player1Goals, p2.internationalGoals AS player2Goals
+ORDER BY p1.internationalGoals DESC, p2.internationalGoals DESC
+
+11. Count how many players are born in 1987.
+
+MATCH (p:Player)
+WHERE p.dob.year = 1987
+RETURN COUNT(p) AS playersBornIn1987, p.dob.year AS Year
+
+12. Which age has the highest participation in the 2014 FIFA World Cup?
+
+MATCH (p:Player)
+RETURN p.age AS age, COUNT(p) AS playerCount
+ORDER BY playerCount DESC
+LIMIT 1
+
+13. Find the path with a length of 2 or 3 between Liverpool FC and Manchester City FC.
+
+MATCH path = (l:Club {name: 'Liverpool FC'})-[*2..3]-(m:Club {name: 'Manchester City FC'})
+RETURN path
+
+14. Find the top 5 countries with players who have the highest average number of international goals. Return the countries and their average international goals in descending order.
+
+MATCH (p:Player)-[:REPRESENTS]->(c:Country)
+WITH c, AVG(p.internationalGoals) AS avgGoals
+RETURN c.name AS country, avgGoals
+ORDER BY avgGoals DESC
+LIMIT 5
+
+15. Identify pairs of players from the same national team who play in different positions but have the closest number of caps. Return these pairs along with their positions and the difference in caps.
+
+MATCH (p1:Player)-[:REPRESENTS]->(c:Country)<-[:REPRESENTS]-(p2:Player)
+WHERE p1.position <> p2.position
+WITH p1, p2, ABS(p1.caps - p2.caps) AS capsDiff, c.name AS country
+ORDER BY capsDiff
+RETURN p1.name AS player1, p1.position AS player1Position, p1.caps AS player1Caps,
+       p2.name AS player2, p2.position AS player2Position, p2.caps AS player2Caps,
+       country, capsDiff
+
+16. Find the clubs with the most players participating in 2014 FIFA World Cup.
+
+MATCH (p:Player)-[:PLAYS_FOR]->(c:Club)
+RETURN c.name AS club, COUNT(p) AS playerCount
+ORDER BY playerCount DESC
+
+17. Identify national teams with high diversity in club representation.
+MATCH (p:Player)-[:REPRESENTS]->(c:Country)
+MATCH (p)-[:PLAYS_FOR]->(club:Club)-[:LOCATED_IN]->(clubCountry:Country)
+WITH c.name AS country, COLLECT(DISTINCT clubCountry.name) AS clubCountries
+RETURN country, SIZE(clubCountries) AS diversityScore, clubCountries
+ORDER BY diversityScore DESC
